@@ -9,8 +9,41 @@ Kronos pairs a performance-oriented **Go** backend with a **React + Three.js** f
 
 ---
 
+## Kronos Fraud Shield (machine learning)
+
+Kronos settles a transfer the moment its packet lands, with no fraud check.
+**Fraud Shield** adds the missing layer, the way a bank's fraud desk works:
+every transfer gets a **risk score before it launches**, risky ones are
+**held** with their funds still locked, and an analyst **releases** or
+**blocks** them (a block refunds the sender through the black-hole void path).
+
+| Piece | Where | What it does |
+|---|---|---|
+| Transaction simulator | `ml/kronos_ml/simulator` | Users, normal behaviour and six injected fraud patterns, built on Kronos's real schema and physics constants (labels used only for evaluation) |
+| Features | `ml/kronos_ml/features` | 28 past-only behavioural features (amount, velocity, new payee, mule inflow, 3-hop cycles, time of day, account age, physics), the same code online and offline |
+| Models | `ml/kronos_ml/models` | Z-score baseline + rules, Isolation Forest, Local Outlier Factor, One-Class SVM, rank ensemble, all **unsupervised** and CPU-only |
+| Evaluation | `ml/kronos_ml/eval`, `report/` | Precision / recall / F1, ROC-AUC, PR-AUC, recall per pattern, business cost, robustness over fraud rates and seeds, SHAP |
+| Risk service | `ml/service/app.py` | FastAPI `POST /score` → score, band (low / medium / high) and reason codes |
+| Go integration | `backend/internal/risk`, `transport/transfer_service.go` | Score before `AddPacket`; hold, release, block, freeze; fail-open |
+| Live demo | `backend/internal/sim` | Hundreds of bot accounts sending at once, a few of them fraudsters, through the real transfer path |
+| Fraud Desk UI | `kronos/src/pages/FraudDeskPage.jsx`, `components/fraud/` | Risk-coloured packets, held packets on the launch pad, live alert feed, review queue, case drawer, charts, model card |
+
+Start here: [plan](plan.md) · [results](report/results.md) · [final report](report/final_report.md) ·
+[demo script](report/demo_script.md) · [integration design](docs/integration.md) · notebooks in `ml/notebooks/`.
+
+```bash
+make setup      # venv, go modules, npm
+make all        # simulate → features → train → evaluate (+ robustness) → notebooks
+make test       # pytest + go test + vitest
+make up         # docker: postgres + backend + risk service + frontend
+make seed-demo  # 300 bots; then http://localhost:5173 → analyst / analyst → Fraud Desk → Start
+```
+
+---
+
 ## Table of Contents
 
+- [Kronos Fraud Shield (machine learning)](#kronos-fraud-shield-machine-learning)
 - [Preview](#preview)
 - [Core Concept](#core-concept)
 - [Features](#features)

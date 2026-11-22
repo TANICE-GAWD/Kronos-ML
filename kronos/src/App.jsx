@@ -14,6 +14,12 @@ import TransferModal from "./components/TransferModal";
 import Notification from "./components/Notification";
 import { Stars, OrbitControls } from "@react-three/drei";
 import { LoginPage } from "./pages/LoginPage";
+import FraudDeskPage from "./pages/FraudDeskPage";
+import RiskOverlay3D from "./components/fraud/RiskOverlay3D";
+import RiskHud from "./components/fraud/RiskHud";
+import CaseDrawer from "./components/fraud/CaseDrawer";
+import { resetMeCache } from "./hooks/useFraudState";
+import "./styles/FraudDesk.css";
 import * as THREE from "three";
 import { Analytics } from "@vercel/analytics/react";
 
@@ -31,6 +37,7 @@ function MainScene() {
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
     localStorage.removeItem('homePlanet');
+    resetMeCache();
     navigate('/login');
   };
 
@@ -114,6 +121,8 @@ function MainScene() {
 
       <StarCreditManager setTotalCredits={setCreditsInFlight} />
 
+      <RiskOverlay3D />
+
       </Canvas>
 
       <div className="hud">
@@ -145,6 +154,10 @@ function MainScene() {
       />
 
       <WalletUI />
+
+      <RiskHud />
+
+      <CaseDrawer />
 
       <TransferModal
         isOpen={isTransferModalOpen}
@@ -203,6 +216,14 @@ function App() {
                 <MainScene />
                 <Analytics />
               </>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/fraud"
+          element={
+            <ProtectedRoute>
+              <FraudDeskPage />
             </ProtectedRoute>
           }
         />

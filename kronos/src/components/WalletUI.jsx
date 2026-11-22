@@ -28,18 +28,13 @@ export default function WalletUI() {
 
     
     const unsubscribe = manager.subscribe((state, changes) => {
-      console.log('[WalletUI] State update received:', {
-        userId,
-        walletsKeys: Object.keys(state.wallets || {}),
-        wallets: state.wallets,
-      });
+      // (per-frame state logging removed: it stalls the browser with hundreds of bots)
       
       setIsConnected(manager.isConnected);
 
       
       if (state.wallets && state.wallets[userId]) {
         const wallet = state.wallets[userId];
-        console.log('[WalletUI] Found wallet for user:', wallet);
         const newBalance = wallet.available_balance;
 
         
@@ -74,7 +69,7 @@ export default function WalletUI() {
           return prevBalance;
         });
       } else {
-        console.warn('[WalletUI] Wallet not found for userId:', userId, 'Available keys:', Object.keys(state.wallets || {}));
+        // wallet not in this frame yet
       }
     });
 

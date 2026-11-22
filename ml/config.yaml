@@ -1,0 +1,37 @@
+# Kronos Fraud Shield configuration. Every script reads this file.
+seed: 42
+
+simulation:
+  n_users: 2000
+  days: 90
+  start: "2026-01-01"
+  fraud_rate: 0.02          # share of transactions that are fraudulent
+  initial_balance: 1000.0   # Kronos registration grant (auth_service.go)
+  payday_credit: 400.0      # synthetic income on the 1st and 15th
+  pattern_weights:          # share of fraud rows per pattern
+    micro_drain: 0.22
+    whale: 0.14
+    odd_hour_spike: 0.18
+    layering: 0.18
+    mule_fan_in: 0.16
+    new_account_burst: 0.12
+
+split:                      # day boundaries (exclusive end) for the time split
+  train_end_day: 60
+  val_end_day: 70
+
+features:
+  amount_prior_log_mean: 3.4   # ~30 credits, prior for users with no history
+  amount_prior_log_std: 0.7
+  prior_weight: 3
+  warmup_tx: 5
+
+models:
+  max_train_rows: 60000       # IF / baseline
+  lof_train_rows: 25000
+  ocsvm_train_rows: 15000
+
+risk:
+  medium_alert_rate: 0.08     # top 8% of transfers are at least "medium"
+  review_cost: 15.0           # credits of analyst time per alert (business cost)
+  high_rate_grid: [0.005, 0.0075, 0.01, 0.015, 0.02, 0.03, 0.04, 0.05]

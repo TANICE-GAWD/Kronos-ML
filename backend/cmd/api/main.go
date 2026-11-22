@@ -12,10 +12,13 @@ import (
 	"github.com/joho/godotenv"
 
 	"backend/internal/auth"
+	kdb "backend/internal/db"
 	"backend/internal/engine"
 	"backend/internal/finance"
 	"backend/internal/models/packet"
 	"backend/internal/repository"
+	"backend/internal/risk"
+	"backend/internal/sim"
 	"backend/internal/transport"
 )
 
@@ -60,6 +63,30 @@ func main() {
 	authService := auth.NewAuthService(userRepository, walletRepository, jwtSecret)
 	log.Println("✓ Auth service initialized")
 
+	// ---- Fraud Shield ----
+	if err := kdb.ApplyRiskMigration(context.Background(), db); err != nil {
+		log.Fatalf("Failed to apply Fraud Shield migration: %v", err)
+	}
+	desk := risk.NewDesk(db)
+	if n, err := desk.LoadHeld(context.Background()); err != nil {
+		log.Printf("Warning: could not reload held transfers: %v", err)
+	} else if n > 0 {
+		log.Printf("✓ Reloaded %d held transfers into the review queue", n)
+	}
+	var riskClient *risk.Client
+	if url := os.Getenv("RISK_SERVICE_URL"); url != "" {
+		timeout := 300 * time.Millisecond
+		if v, err := time.ParseDuration(os.Getenv("RISK_TIMEOUT")); err == nil {
+			timeout = v
+		}
+		riskClient = risk.NewClient(url, timeout)
+		log.Printf("✓ Fraud Shield enabled: risk service %s (timeout %s, fail-open)", url, timeout)
+	} else {
+		log.Println("Warning: RISK_SERVICE_URL not set, transfers are not scored")
+	}
+	admins := transport.AdminUsernames()
+	ensureAnalyst(authService, userRepository)
+
 	
 	ledger := finance.NewLedger()
 	finance.SeedLedger(ledger)
@@ -67,6 +94,16 @@ func main() {
 
 	hub := transport.NewHub(walletRepository, transactionRepository, userRepository)
 	scheduler := engine.NewScheduler(BlackHole, ledger, transactionRepository)
+
+	transferSvc := &transport.TransferService{
+		Scheduler: scheduler, Ledger: ledger, Users: userRepository, Wallets: walletRepository,
+		Txs: transactionRepository, Desk: desk, DB: db,
+	}
+	if riskClient != nil {
+		transferSvc.Scorer = riskClient
+	}
+	simulator := sim.New(riskClient, transport.SimExecutor{Svc: transferSvc}, authService, userRepository, db)
+	hub.SetFraud(desk, func() interface{} { return simulator.Status() })
 	stop := make(chan struct{})
 	log.Println("✓ Engine components initialized")
 
@@ -76,9 +113,39 @@ func main() {
 	log.Println("✓ Hub and scheduler started")
 
 	
+	// The physics loop runs at 60 FPS, but each enriched frame carries users,
+	// wallets, transactions and the fraud desk. With hundreds of demo bots,
+	// 60 frames/s overflow slow clients (the hub then drops them), so forward
+	// at most 5 frames/s; the frontend already interpolates packet motion.
 	go func() {
-		for stateSnapshot := range scheduler.UpdateChan {
-			hub.Broadcast(stateSnapshot)
+		var latest *packet.StateUpdate
+		tick := time.NewTicker(200 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case s, ok := <-scheduler.UpdateChan:
+				if !ok {
+					return
+				}
+				latest = &s
+			case <-tick.C:
+				if latest != nil {
+					hub.Broadcast(*latest)
+					latest = nil
+				}
+			}
+		}
+	}()
+
+	// The scheduler only emits frames while packets fly. Held transfers, alerts
+	// and the simulation scorecard must update even when the sky is empty.
+	go func() {
+		t := time.NewTicker(700 * time.Millisecond)
+		defer t.Stop()
+		for range t.C {
+			if len(scheduler.GetState()) == 0 {
+				hub.Broadcast(packet.StateUpdate{Packets: scheduler.GetState(), Timestamp: time.Now().UnixMilli()})
+			}
 		}
 	}()
 
@@ -110,7 +177,8 @@ func main() {
 	protected := r.Group("/api")
 	protected.Use(transport.AuthMiddleware(authService))
 	{
-		protected.POST("/transfer", transport.TransferHandler(scheduler, ledger, userRepository, walletRepository, transactionRepository))
+		protected.POST("/transfer", transport.TransferHandler(transferSvc))
+		protected.GET("/me", transport.MeHandler(admins))
 		protected.GET("/balance/:userID", transport.BalanceHandler(ledger))
 		protected.GET("/history/:userID", transport.HistoryHandler(ledger))
 		protected.GET("/user/me/wealth", transport.GetUserWealthHandler(walletRepository))
@@ -119,6 +187,22 @@ func main() {
 		protected.GET("/user/me/transactions", transport.GetUserTransactionHistoryHandler(transactionRepository))
 		protected.GET("/transactions/:txID/status-history", transport.GetTransactionStatusHistoryHandler(transactionRepository))
 	}
+	fraud := r.Group("/api")
+	fraud.Use(transport.AuthMiddleware(authService), transport.AdminOnly(admins))
+	{
+		fraud.GET("/fraud/queue", transport.FraudQueueHandler(desk))
+		fraud.GET("/fraud/stats", transport.FraudStatsHandler(desk))
+		fraud.GET("/fraud/model", transport.FraudModelHandler(riskClient))
+		fraud.GET("/fraud/case/:txID", transport.FraudCaseHandler(desk, db))
+		fraud.POST("/fraud/:txID/release", transport.FraudDecisionHandler(transferSvc, "release"))
+		fraud.POST("/fraud/:txID/block", transport.FraudDecisionHandler(transferSvc, "block"))
+		fraud.POST("/sim/seed", transport.SimSeedHandler(simulator))
+		fraud.POST("/sim/start", transport.SimStartHandler(simulator))
+		fraud.POST("/sim/stop", transport.SimStopHandler(simulator))
+		fraud.GET("/sim/status", transport.SimStatusHandler(simulator))
+	}
+	log.Println("✓ Fraud Shield routes registered: /api/fraud/*, /api/sim/* (analysts only)")
+
 	log.Println("✓ Protected routes registered: /api/transfer, /api/balance, /api/history, /api/user/me/wealth, /api/user/me/wallets-detailed, /api/user/me/transactions, /api/transactions/:txID/status-history")
 
 	
@@ -138,4 +222,21 @@ func main() {
 	if err := r.Run(":8080"); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+// ensureAnalyst creates the demo fraud-analyst account (analyst / analyst) if missing.
+func ensureAnalyst(a *auth.AuthService, users repository.UserRepository) {
+	ctx := context.Background()
+	if _, err := users.GetUserByUsername(ctx, "analyst"); err == nil {
+		return
+	}
+	pw := os.Getenv("ANALYST_PASSWORD")
+	if pw == "" {
+		pw = "analyst"
+	}
+	if err := a.Register(ctx, "analyst", pw, "Earth"); err != nil {
+		log.Printf("Warning: could not create analyst account: %v", err)
+		return
+	}
+	log.Println("✓ Demo analyst account created (username: analyst)")
 }
