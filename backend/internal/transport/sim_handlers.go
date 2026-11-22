@@ -39,7 +39,7 @@ func SimSeedHandler(s *sim.Simulator) gin.HandlerFunc {
 		}
 		_ = ctx.ShouldBindJSON(&body)
 		if body.N <= 0 {
-			body.N = 300
+			body.N = sim.DefaultBots
 		}
 		if body.N > 1000 {
 			body.N = 1000

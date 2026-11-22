@@ -73,8 +73,8 @@ export default function SimControlPanel({ sim, compact = false }) {
           </>
         )}
         {(s.bots || 0) < 20 ? (
-          <button className="btn" onClick={() => call(() => fraudApi.simSeed(300))} disabled={busy}>
-            Create 300 bots
+          <button className="btn" onClick={() => call(() => fraudApi.simSeed(100))} disabled={busy}>
+            Create 100 bots
           </button>
         ) : busy ? (
           <button className="btn block" onClick={() => call(fraudApi.simStop)}>

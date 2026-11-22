@@ -55,7 +55,7 @@ up: ## postgres + backend + risk service + frontend in docker
 down:
 	docker compose down
 
-seed-demo: ## create 300 bot users (backend must be running; logs in as analyst)
+seed-demo: ## create 100 bot users (backend must be running; logs in as analyst)
 	$(PY) scripts/seed_demo.py
 
 demo: seed-demo ## seed bots, then start a scenario from the Fraud Desk

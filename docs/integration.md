@@ -88,7 +88,7 @@ transfer.
 carries `risk_score`, `risk_band` and `reasons`. Because the scheduler only
 emits frames while packets fly, `cmd/api/main.go` adds a 700 ms heartbeat
 when the sky is empty so held cases and the scorecard still update. The
-transaction list in each frame is capped to the newest 300 rows.
+transaction list in each frame is capped to the newest 50 rows.
 
 ## Demo traffic generator
 
