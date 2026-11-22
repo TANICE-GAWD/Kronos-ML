@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Send, AlertCircle, Loader, Globe } from 'lucide-react';
+import { X, Send, AlertCircle, Loader, Globe, ShieldAlert } from 'lucide-react';
 import { getCurrencyIdForPlanet } from '../utils/planetCurrency';
 import WebSocketManager from '../services/WebSocketManager';
 import { API_BASE_URL } from '../config';
@@ -31,6 +31,8 @@ export default function TransferModal({
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  // Fraud Shield result of the last transfer (shown like a banking app would).
+  const [riskResult, setRiskResult] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const debounceRef = useRef(null);
@@ -190,13 +192,19 @@ export default function TransferModal({
         recipient: selectedRecipient.username,
         amount: parseFloat(amount),
         planet: selectedRecipient.home_planet,
+        status: data.status,
+        risk: data.risk,
       });
 
-      
       setSelectedRecipient(null);
       setSearchQuery('');
       setAmount('');
       setIsLoading(false);
+      if (data.status === 'held' || data.risk?.band === 'medium') {
+        // Keep the modal open so the sender sees why.
+        setRiskResult({ status: data.status, recipient: data.receiver, amount: data.amount, ...data.risk });
+        return;
+      }
       onClose();
     } catch (err) {
       setError('Failed to connect to server: ' + err.message);
@@ -205,6 +213,34 @@ export default function TransferModal({
   };
 
   if (!isOpen) return null;
+
+  if (riskResult) {
+    const held = riskResult.status === 'held';
+    return (
+      <div className="transfer-modal-overlay" onClick={() => { setRiskResult(null); onClose(); }}>
+        <div className={`transfer-modal risk-result ${held ? 'held' : 'watch'}`} onClick={(e) => e.stopPropagation()}>
+          <div className="transfer-modal-header">
+            <h2>
+              <ShieldAlert size={20} style={{ display: 'inline', marginRight: '10px' }} />
+              {held ? 'Transfer held for review' : 'Transfer sent'}
+            </h2>
+          </div>
+          <p className="risk-result-msg">{riskResult.message}</p>
+          {riskResult.reasons?.length > 0 && (
+            <ul className="risk-result-reasons">
+              {riskResult.reasons.map((r) => (
+                <li key={r.code}>{r.text}</li>
+              ))}
+            </ul>
+          )}
+          <p className="risk-result-score">Risk score {Number(riskResult.score).toFixed(2)}</p>
+          <button className="send-button" onClick={() => { setRiskResult(null); onClose(); }}>
+            OK
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="transfer-modal-overlay" onClick={onClose}>

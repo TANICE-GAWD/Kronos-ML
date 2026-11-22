@@ -1,0 +1,17 @@
+# Exact versions for the risk service image: the pickled model must load with the
+# same numpy / pandas / scikit-learn it was trained with. Regenerate after retraining
+# with a new environment:  pip freeze | grep -iE "^(numpy|pandas|scikit-learn|...)=="
+fastapi==0.165.0
+joblib==1.6.0
+numpy==2.5.5
+pandas==3.1.1
+psycopg==3.3.9
+psycopg-binary==3.3.9
+pyarrow==26.0.1
+pydantic==2.14.4
+PyYAML==6.0.4
+scikit-learn==1.9.1
+scipy==1.18.1
+starlette==1.10.0
+threadpoolctl==3.8.0
+uvicorn==0.54.0

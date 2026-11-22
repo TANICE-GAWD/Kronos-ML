@@ -4,6 +4,7 @@ import(
 	"context"
 	"backend/internal/models/packet"
 	"backend/internal/repository"
+	"backend/internal/risk"
 	"github.com/google/uuid"
 	"log"
 	"strings"
@@ -42,6 +43,24 @@ type Hub struct{
 	walletRepo repository.WalletRepository
 	transactionRepo repository.TransactionRepository
 	userRepo repository.UserRepository
+	// Fraud Shield (optional): desk snapshot and simulation status.
+	desk      *risk.Desk
+	simStatus func() interface{}
+}
+
+// Caps on what every frame carries. With hundreds of demo bots the full lists
+// make frames several hundred KB and browsers fall behind. The complete review
+// queue is always available from GET /api/fraud/queue.
+const (
+	maxTransactionsInState = 50
+	maxHeldInState         = 50
+	maxAlertsInState       = 40
+)
+
+// SetFraud attaches the fraud desk and simulation status to every state frame.
+func (h *Hub) SetFraud(desk *risk.Desk, simStatus func() interface{}) {
+	h.desk = desk
+	h.simStatus = simStatus
 }
 
 func NewHub(walletRepo repository.WalletRepository, transactionRepo repository.TransactionRepository, userRepo repository.UserRepository) *Hub{
@@ -188,6 +207,9 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 		log.Printf("[Hub] Error fetching transactions: %v", err)
 	} else {
 		txList := make([]map[string]interface{}, 0)
+		if len(transactions) > maxTransactionsInState {
+			transactions = transactions[:maxTransactionsInState] // newest first
+		}
 		for _, tx := range transactions {
 			txList = append(txList, map[string]interface{}{
 				"id":                  tx.ID.String(),
@@ -203,6 +225,28 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 		}
 		state.Transactions = txList
 	}
-	
+
+	if h.desk != nil {
+		held, alerts, stats := h.desk.Snapshot()
+		if len(held) > maxHeldInState {
+			held = held[:maxHeldInState] // highest scores first
+		}
+		if len(alerts) > maxAlertsInState {
+			alerts = alerts[:maxAlertsInState] // newest first
+		}
+		state.Held, state.Alerts, state.RiskStats = held, alerts, stats
+	}
+	if h.simStatus != nil {
+		state.Sim = h.simStatus()
+	}
+	if state.Held == nil {
+		state.Held = []interface{}{}
+	}
+	if state.Alerts == nil {
+		state.Alerts = []interface{}{}
+	}
+	if state.Packets == nil {
+		state.Packets = map[uuid.UUID]packet.Packet{}
+	}
 	return state
 }

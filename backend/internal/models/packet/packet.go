@@ -41,6 +41,19 @@ type StateUpdate struct {
 	Wallets      map[string]interface{}         `json:"wallets"`
 	Transactions []map[string]interface{}       `json:"transactions"`
 	Users        map[uuid.UUID]map[string]interface{} `json:"users"`
+	// Fraud Shield: transfers held for review, the latest alerts, desk
+	// counters and the demo simulation status. Filled in by the hub.
+	Held      []interface{} `json:"held"`
+	Alerts    []interface{} `json:"alerts"`
+	RiskStats interface{}   `json:"riskStats,omitempty"`
+	Sim       interface{}   `json:"sim,omitempty"`
+}
+
+// RiskReason is one human-readable reason behind a fraud score.
+type RiskReason struct {
+	Code   string  `json:"code"`
+	Text   string  `json:"text"`
+	Weight float64 `json:"weight"`
 }
 
 type Packet struct {
@@ -59,6 +72,10 @@ type Packet struct {
 	DilationFactor float64 `json:"dilationfactor"`
 	Velocity       float64   `json:"velocity"`
 	TravelT        float64   `json:"travel_t"`
+	// Fraud Shield risk result. The physics engine ignores these fields.
+	RiskScore float64      `json:"risk_score"`
+	RiskBand  string       `json:"risk_band,omitempty"`
+	Reasons   []RiskReason `json:"reasons,omitempty"`
 }
 
 

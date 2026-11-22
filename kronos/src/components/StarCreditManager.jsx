@@ -7,10 +7,24 @@ import starsTexture from "/textures/textures2/8k_stars.jpg";
 import milkyWayTexture from "/textures/textures2/8k_stars_milky_way.jpg";
 import { WS_URL } from "../config";
 
+// Per-packet logging on every frame stalls the browser once hundreds of demo
+// bots are sending; flip to true when debugging the packet pipeline.
+const DEBUG_PACKETS = false;
+const debugLog = (...args) => {
+  if (DEBUG_PACKETS) console.log(...args);
+};
+
 const statusColors = {
   active: 0xffd700,
   stalled: 0x9400d3,
   destroyed: 0xff4500,
+};
+
+// Fraud Shield: an active packet is coloured by its risk band.
+const riskColors = {
+  low: 0x6fae8b,
+  medium: 0xd29b3a,
+  high: 0xd8505c,
 };
 
 const trailColors = {
@@ -85,12 +99,16 @@ function createTrailLine(status = "active") {
   return mesh;
 }
 
-function createPacketMesh(status = "active") {
+function activeColor(band) {
+  return riskColors[band] ?? statusColors.active;
+}
+
+function createPacketMesh(status = "active", band = null) {
   const group = new THREE.Group();
 
   const geo = new THREE.IcosahedronGeometry(5, 1);
   const mat = new THREE.MeshStandardMaterial({
-    color: statusColors[status] || statusColors.active,
+    color: status === "active" ? activeColor(band) : statusColors[status] || statusColors.active,
     emissive: 0x222222,
     roughness: 0.2,
     metalness: 0.8,
@@ -113,6 +131,7 @@ function createPacketMesh(status = "active") {
     material: mat,
     light: glow,
     status,
+    band,
     creationTime: performance.now(),
     removed: false,
   };
@@ -127,9 +146,10 @@ function updateStatusVisuals(group, status, trailLine) {
   group.userData.status = status;
 
   if (status === "active") {
-    material.color.setHex(statusColors.active);
-    material.emissive.setHex(0x444400);
-    light.color.setHex(0xffd700);
+    const c = activeColor(group.userData.band);
+    material.color.setHex(c);
+    material.emissive.setHex(group.userData.band === "high" ? 0x550010 : 0x444400);
+    light.color.setHex(c);
     light.intensity = 1.3;
     if (trailLine?.material) {
       trailLine.material.emissive.setHex(trailColors.active);
@@ -176,19 +196,19 @@ function disposeGroup(group) {
 
 function processPacketData(data, packetMap, targetMap, scene, sendCount) {
   if (typeof data !== "object" || data === null) {
-    console.log("[processPacketData] invalid data type");
+    debugLog("[processPacketData] invalid data type");
     return;
   }
 
   const incomingIds = new Set(Object.keys(data));
-  console.log("[processPacketData] processing", incomingIds.size, "packets");
+  debugLog("[processPacketData] processing", incomingIds.size, "packets");
 
   
   for (const id of incomingIds) {
     const packet = data[id];
-    console.log(`[processPacketData] packet ${id}:`, packet);
+    debugLog(`[processPacketData] packet ${id}:`, packet);
     if (!packet || !packet.current_pos) {
-      console.warn(`[processPacketData] packet ${id} missing current_pos`, packet);
+      debugLog(`[processPacketData] packet ${id} missing current_pos`, packet);
       continue;
     }
 
@@ -199,11 +219,16 @@ function processPacketData(data, packetMap, targetMap, scene, sendCount) {
     );
 
     const status = packet.status || "active";
-    console.log(`[processPacketData] creating/updating packet ${id}, status=${status}, pos:`, target);
+    const band = packet.risk_band || null;
+    debugLog(`[processPacketData] creating/updating packet ${id}, status=${status}, pos:`, target);
 
     if (packetMap.current.has(id)) {
       const entry = packetMap.current.get(id);
       entry.target = target;
+      if (entry.group?.userData && entry.group.userData.band !== band) {
+        entry.group.userData.band = band;
+        updateStatusVisuals(entry.group, entry.status, entry.trailLine);
+      }
 
       if (entry.status !== status) {
         entry.status = status;
@@ -229,8 +254,9 @@ function processPacketData(data, packetMap, targetMap, scene, sendCount) {
         }, 420);
       }
     } else {
-      console.log(`[processPacketData] new packet ${id}, creating mesh`);
-      const group = createPacketMesh(status);
+      debugLog(`[processPacketData] new packet ${id}, creating mesh`);
+      const group = createPacketMesh(status, band);
+      group.userData.txId = id;
       group.position.copy(target);
       scene.add(group);
 
@@ -272,7 +298,7 @@ function processPacketData(data, packetMap, targetMap, scene, sendCount) {
   
   for (const [existingId, existingEntry] of packetMap.current.entries()) {
     if (!incomingIds.has(existingId) && existingEntry.status !== "destroyed") {
-      console.log(`[processPacketData] removing missing packet ${existingId}`);
+      debugLog(`[processPacketData] removing missing packet ${existingId}`);
       updateStatusVisuals(existingEntry.group, "destroyed", existingEntry.trailLine);
       existingEntry.status = "destroyed";
       if (!existingEntry.removalScheduled) {
@@ -296,7 +322,7 @@ function processPacketData(data, packetMap, targetMap, scene, sendCount) {
     }
   }
 
-  console.log(`[processPacketData] total packets in map: ${packetMap.current.size}`);
+  debugLog(`[processPacketData] total packets in map: ${packetMap.current.size}`);
   sendCount(packetMap.current.size);
 }
 
@@ -568,7 +594,7 @@ function createStarBackground(scene) {
 }
 
 export default function StarCreditManager({ setTotalCredits }) {
-  const { scene } = useThree();
+  const { scene, camera, gl } = useThree();
   const [showNeptuneWarning, setShowNeptuneWarning] = useState(false);
   const packetMap = useRef(new Map());
   const targetMap = useRef(new Map());
@@ -762,6 +788,28 @@ export default function StarCreditManager({ setTotalCredits }) {
       sendCount(0);
     };
   }, [scene]);
+
+  // Fraud Shield: click a packet to open its case (analysts get the drawer).
+  useEffect(() => {
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const onClick = (e) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const groups = Array.from(packetMap.current.values()).map((x) => x.group).filter(Boolean);
+      const hit = raycaster.intersectObjects(groups, true)[0];
+      if (!hit) return;
+      let o = hit.object;
+      while (o && !o.userData?.txId) o = o.parent;
+      if (o?.userData?.txId) {
+        window.dispatchEvent(new CustomEvent("kronos:open-case", { detail: o.userData.txId }));
+      }
+    };
+    gl.domElement.addEventListener("click", onClick);
+    return () => gl.domElement.removeEventListener("click", onClick);
+  }, [gl, camera]);
 
   const handleNeptuneWarningClose = () => {
     setShowNeptuneWarning(false);

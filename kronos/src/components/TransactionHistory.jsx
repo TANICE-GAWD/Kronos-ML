@@ -1,17 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle, XCircle, RefreshCw, ShieldAlert, Ban } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
 const STATUS_ICON = {
   settled: <CheckCircle size={13} style={{ color: '#4ade80' }} />,
   pending: <Clock size={13} style={{ color: '#fbbf24' }} />,
   failed:  <XCircle size={13} style={{ color: '#ef4444' }} />,
+  // Fraud Shield statuses
+  held:    <ShieldAlert size={13} style={{ color: '#ff3b4e' }} />,
+  blocked: <Ban size={13} style={{ color: '#ff3b4e' }} />,
 };
 
 const STATUS_COLOR = {
   settled: '#4ade80',
   pending: '#fbbf24',
   failed:  '#ef4444',
+  held:    '#ff3b4e',
+  blocked: '#ff3b4e',
 };
 
 function timeAgo(isoDate) {

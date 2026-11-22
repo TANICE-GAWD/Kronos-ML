@@ -26,6 +26,10 @@ class WebSocketManager {
       wallets: {},           // User wallets {userID: {currency: balance}}
       transactions: [],      // Recent transactions
       users: {},            // User info {userID: {username, homePlanet}}
+      held: [],             // Fraud Shield: transfers held for analyst review
+      alerts: [],           // Fraud Shield: latest medium/high alerts (newest first)
+      riskStats: null,      // Fraud Shield: desk counters (scored, held, blocked, histogram...)
+      sim: null,            // Fraud Shield: live demo simulation status + scorecard
       timestamp: null
     };
 
@@ -137,6 +141,10 @@ class WebSocketManager {
     this.state.wallets = newState.wallets;
     this.state.transactions = newState.transactions;
     this.state.users = newState.users || {};
+    this.state.held = Array.isArray(newState.held) ? newState.held : [];
+    this.state.alerts = Array.isArray(newState.alerts) ? newState.alerts : [];
+    this.state.riskStats = newState.riskStats || null;
+    this.state.sim = newState.sim || null;
     this.state.timestamp = newState.timestamp || Date.now();
 
     // Attach changes to state for efficient processing
