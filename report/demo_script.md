@@ -4,7 +4,7 @@
 
 ```bash
 make up                 # postgres, backend, risk service, frontend (docker)
-make seed-demo          # 300 bot accounts with a 30-day history
+make seed-demo          # 100 bot accounts with a 30-day history
 ```
 
 Or without Docker: run Postgres and apply the three schema files, then
@@ -24,7 +24,7 @@ itself as fast as packets fly."
 
 In the left panel, pick **Mixed attack** and press **Start**.
 
-* 500 transfers from about 280 bots over 60 seconds. A few of them are
+* 500 transfers from about 95 bots over 60 seconds. A few of them are
   fraudsters: a micro-drain, two whale transfers, an off-hours spike, a
   laundering ring, a mule account and a brand-new account bursting.
 * Point at the packet colours: **green** low risk, **amber** under watch,

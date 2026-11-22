@@ -177,7 +177,7 @@
 .mc-table tr.active td:first-child { font-weight: 600; }
 
 /* ---------- case drawer ---------- */
-.case-drawer-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.4); }
+.case-drawer-overlay { position: fixed; inset: 0; z-index: 1000; /* above the wallet (100) */ background: rgba(0, 0, 0, 0.4); }
 .case-drawer {
   position: absolute; right: 0; top: 0; bottom: 0; width: 400px; max-width: 100vw; overflow-y: auto;
   background: var(--fs-panel); border-left: 1px solid var(--fs-line); color: var(--fs-text);

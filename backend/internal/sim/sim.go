@@ -27,6 +27,9 @@ const (
 	BotPrefix   = "bot_"
 	BotPassword = "kronos-bot-2026"
 	BotBalance  = 5000.0
+	// DefaultBots keeps the demo light enough for an ordinary laptop: every
+	// WebSocket frame carries all users and wallets.
+	DefaultBots = 100
 )
 
 var botPlanets = []string{"Earth", "Earth", "Earth", "Mars", "Mars", "Venus", "Venus", "Mercury", "Jupiter", "Saturn"}
@@ -184,6 +187,21 @@ func (s *Simulator) seed(ctx context.Context, n int) error {
 		log.Printf("[Sim] some bots failed to register: %v", firstErr)
 	}
 	if s.db != nil {
+		// Seeding fewer bots than before removes the extras (and their demo
+		// transfers), so a smaller demo really is smaller.
+		res, err := s.db.ExecContext(ctx, `
+			DELETE FROM users WHERE username LIKE 'bot\_%'
+			AND substring(username from 5) ~ '^[0-9]+$' AND substring(username from 5)::int > $1`, n)
+		if err != nil {
+			return fmt.Errorf("remove extra bots: %w", err)
+		}
+		if k, _ := res.RowsAffected(); k > 0 {
+			log.Printf("[Sim] removed %d bots above bot_%03d", k, n)
+			s.mu.Lock()
+			s.bots = map[string]uuid.UUID{}
+			s.warmed = false
+			s.mu.Unlock()
+		}
 		if _, err := s.db.ExecContext(ctx, `
 			UPDATE wallets w SET available_balance = GREATEST(w.available_balance, $1)
 			FROM users u WHERE u.id = w.user_id AND u.username LIKE 'bot\_%'`, BotBalance); err != nil {

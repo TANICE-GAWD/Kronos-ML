@@ -276,7 +276,7 @@ React + Three.js ── REST ──▶ Go / Gin TransferService ── POST /sco
 
 **Live demo.**
 
-* **Bots:** about 300 bot accounts get a 30-day synthetic history inside the
+* **Bots:** 100 bot accounts (300 also works on a faster machine) get a 30-day synthetic history inside the
   risk service.
 * **Scenarios:** the service plans one of four scenarios (normal day, account
   takeover, laundering ring, mixed attack) with the same simulator used for

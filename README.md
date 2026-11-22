@@ -36,7 +36,7 @@ make setup      # venv, go modules, npm
 make all        # simulate → features → train → evaluate (+ robustness) → notebooks
 make test       # pytest + go test + vitest
 make up         # docker: postgres + backend + risk service + frontend
-make seed-demo  # 300 bots; then http://localhost:5173 → analyst / analyst → Fraud Desk → Start
+make seed-demo  # 100 bots; then http://localhost:5173 → analyst / analyst → Fraud Desk → Start
 ```
 
 ---
