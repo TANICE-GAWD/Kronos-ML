@@ -8,3 +8,4 @@ ml/models/scores.parquet
 # per-model artefacts are rebuilt by `make train`; only the deployed bundle ships
 ml/models/*.joblib
 !ml/models/deployed.joblib
+

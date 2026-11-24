@@ -1,0 +1,67 @@
+Same steps, pointed at the `kronos` database instead.
+
+## 0. Check the database exists and get the right code
+```bash
+cd ~/Desktop/Kronos-ML
+psql "postgres://tanice:tanice_Iphone11@localhost:5432/kronos" -c "select 1"
+```
+If that says `database "kronos" does not exist`, create it:
+```bash
+createdb -h localhost -U tanice kronos
+```
+Then switch branches:
+```bash
+git fetch origin
+git checkout fraud-shield
+```
+
+## 1. Load the schema (once)
+```bash
+export PGURL="postgres://tanice:tanice_Iphone11@localhost:5432/kronos"
+psql "$PGURL" -f backend/internal/db/schema_enhanced.sql
+psql "$PGURL" -f backend/internal/db/procedures.sql
+psql "$PGURL" -f backend/internal/db/views.sql
+```
+"already exists" notices are fine. Only stop if you see `ERROR`.
+
+## 2. Risk service (terminal 1)
+```bash
+cd ~/Desktop/Kronos-ML
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r ml/requirements-service.txt
+cd ml
+DATABASE_URL="postgresql://tanice:tanice_Iphone11@localhost:5432/kronos" \
+  uvicorn service.app:app --port 8000
+```
+Wait for `Uvicorn running on http://127.0.0.1:8000`.
+
+## 3. Backend (terminal 2)
+```bash
+cd ~/Desktop/Kronos-ML/backend
+DATABASE_URL="postgres://tanice:tanice_Iphone11@localhost:5432/kronos?sslmode=disable" \
+RISK_SERVICE_URL=http://localhost:8000 \
+go run ./cmd/api
+```
+Passing `DATABASE_URL` on the command line overrides the `galactic_db` value in `backend/.env`, so you don't need to edit that file. Check the output for `✓ Fraud Shield enabled` and `✓ Demo analyst account created`.
+
+## 4. Frontend (terminal 3)
+```bash
+cd ~/Desktop/Kronos-ML/kronos
+npm install
+npm run dev
+```
+
+## 5. Bots (terminal 4, once)
+```bash
+cd ~/Desktop/Kronos-ML
+python3 scripts/seed_demo.py
+```
+Wait for "300 bots ready".
+
+## 6. Demo
+1. Open http://localhost:5173.
+2. Log in as **analyst** / **analyst**.
+3. In the left panel pick **Mixed attack**, then **Start**. Or click **Fraud desk** for the full dashboard.
+
+**Next time:** the database and bots stay, so you only need steps 2, 3 and 4. In terminal 1, run `source .venv/bin/activate` before starting the risk service.
