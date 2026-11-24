@@ -64,4 +64,11 @@ Wait for "300 bots ready".
 2. Log in as **analyst** / **analyst**.
 3. In the left panel pick **Mixed attack**, then **Start**. Or click **Fraud desk** for the full dashboard.
 
+## 7. Clear Simulation Data (Past Runs)
+If you want to completely erase all past simulation data (all simulated transactions, risk scores, reviews, and decisions) and reset the dashboard queues, KPIs, and risk-scoring history, run this command in your terminal:
+```bash
+curl -X POST http://localhost:8080/api/sim/reset
+```
+This is safe to run at any time and will completely reset both the Postgres database and the in-memory states back to a clean slate.
+
 **Next time:** the database and bots stay, so you only need steps 2, 3 and 4. In terminal 1, run `source .venv/bin/activate` before starting the risk service.

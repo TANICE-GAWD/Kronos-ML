@@ -99,6 +99,19 @@ func New(client *risk.Client, exec Executor, reg Registrar, users UserLookup, db
 	}
 }
 
+// ResetWarmed resets the warmed flag and tells the risk client to reset its scorer state.
+func (s *Simulator) ResetWarmed(ctx context.Context) error {
+	s.mu.Lock()
+	s.warmed = false
+	s.st = Status{State: "idle", Bands: map[string]int{}, ByPattern: map[string]*PatternScore{}}
+	s.mu.Unlock()
+
+	if s.client != nil {
+		return s.client.Reset(ctx)
+	}
+	return nil
+}
+
 func (s *Simulator) set(f func(st *Status)) {
 	s.mu.Lock()
 	f(&s.st)
@@ -269,7 +282,7 @@ func (s *Simulator) Start(req StartRequest) error {
 		req.Scenario = "mixed_attack"
 	}
 	if req.N <= 0 {
-		req.N = 500
+		req.N = 100
 	}
 	if req.DurationS <= 0 {
 		req.DurationS = 60
@@ -280,11 +293,17 @@ func (s *Simulator) Start(req StartRequest) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	s.cancel = cancel
-	warmed := s.warmed
+	s.warmed = false // force re-warmup because we are resetting the risk service
+	warmed := false
 	s.st = Status{State: "planning", Message: "planning scenario", Scenario: req.Scenario, Bots: s.st.Bots,
 		Bands: map[string]int{}, ByPattern: map[string]*PatternScore{}, DurationS: req.DurationS}
 	s.mu.Unlock()
 	go func() {
+		// Reset the python risk service scorer to empty state
+		if err := s.client.Reset(ctx); err != nil {
+			log.Printf("[Sim] failed to reset risk service: %v", err)
+		}
+
 		if !warmed {
 			s.set(func(st *Status) { st.State, st.Message = "warming", "giving bots a 30-day history" })
 			if err := s.warm(ctx); err != nil {

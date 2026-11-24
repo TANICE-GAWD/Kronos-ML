@@ -1,0 +1,39 @@
+ 1. Go Simulator Configuration
+
+  Controls the default count inside the Go traffic generator if no transfer count is provided in the request payload.
+
+   backend/internal/sim/sim.go lines 270-272
+
+      if req.N <= 0 {
+          req.N = 100
+      }
+
+  2. Frontend React Component (SimControlPanel)
+
+  Controls the initial state of the React simulation control panel inputs displayed in your browser.
+
+   kronos/src/components/fraud/SimControlPanel.jsx lines 6-8
+
+    const [scenario, setScenario] = useState('mixed_attack');
+    const [n, setN] = useState(100);
+    const [duration, setDuration] = useState(60);
+
+  3. Risk Service Simulator Features
+
+  Controls the default parameter of the scenario-planning function within the Python risk library.
+
+   ml/kronos_ml/features/online.py lines 201-202
+
+      def plan(self, scenario: str = "mixed_attack", n: int = 100, fraud_rate: float | None = None,
+               seed: int | None = None) -> dict:
+
+  4. FastAPI Pydantic Schema (App Request Validator)
+
+  Controls the default PlanRequest validation model parameter on the risk-scoring service startup and endpoints.
+
+   ml/service/app.py lines 61-64
+
+  class PlanRequest(BaseModel):
+      scenario: str = "mixed_attack"
+      n: int = Field(100, ge=1, le=5000)
+      fraud_rate: Optional[float] = Field(None, ge=0, le=0.5)

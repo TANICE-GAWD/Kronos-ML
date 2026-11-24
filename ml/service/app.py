@@ -60,7 +60,7 @@ class WarmupRequest(BaseModel):
 
 class PlanRequest(BaseModel):
     scenario: str = "mixed_attack"
-    n: int = Field(500, ge=1, le=5000)
+    n: int = Field(100, ge=1, le=5000)
     fraud_rate: Optional[float] = Field(None, ge=0, le=0.5)
     seed: Optional[int] = None
 
@@ -127,3 +127,10 @@ def sim_plan(req: PlanRequest):
         return get_scorer().plan(req.scenario, req.n, req.fraud_rate, req.seed)
     except RuntimeError as e:
         raise HTTPException(409, str(e))
+
+
+@app.post("/sim/reset")
+def sim_reset():
+    scorer = get_scorer()
+    scorer.reset()
+    return {"status": "ok"}

@@ -170,8 +170,9 @@ func main() {
 		public.POST("/register", transport.RegisterHandler(authService))
 		public.POST("/login", transport.LoginHandler(authService))
 		public.GET("/users/search", transport.SearchHandler(userRepository))
+		public.POST("/sim/reset", transport.SimResetHandler(simulator, desk))
 	}
-	log.Println("✓ Public routes registered: /api/register, /api/login, /api/users/search")
+	log.Println("✓ Public routes registered: /api/register, /api/login, /api/users/search, /api/sim/reset")
 
 	
 	protected := r.Group("/api")
@@ -197,7 +198,7 @@ func main() {
 		fraud.POST("/fraud/:txID/release", transport.FraudDecisionHandler(transferSvc, "release"))
 		fraud.POST("/fraud/:txID/block", transport.FraudDecisionHandler(transferSvc, "block"))
 		fraud.POST("/sim/seed", transport.SimSeedHandler(simulator))
-		fraud.POST("/sim/start", transport.SimStartHandler(simulator))
+		fraud.POST("/sim/start", transport.SimStartHandler(simulator, desk))
 		fraud.POST("/sim/stop", transport.SimStopHandler(simulator))
 		fraud.GET("/sim/status", transport.SimStatusHandler(simulator))
 	}

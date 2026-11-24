@@ -118,6 +118,12 @@ func (c *Client) Model(ctx context.Context) (map[string]interface{}, error) {
 	return m, c.get(ctx, "/model", &m)
 }
 
+// Reset clears previous simulation runs/state in the risk service.
+func (c *Client) Reset(ctx context.Context) error {
+	var out map[string]interface{}
+	return c.post(ctx, "/sim/reset", nil, &out, 5*time.Second)
+}
+
 // BotUser is a demo account passed to /warmup.
 type BotUser struct {
 	ID         string `json:"id"`

@@ -235,6 +235,77 @@ func (d *Desk) Record(c *Case) {
 	}
 }
 
+// ClearSimulated deletes all simulated transactions from both DB and in-memory.
+func (d *Desk) ClearSimulated(ctx context.Context) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.db != nil {
+		_, err := d.db.ExecContext(ctx, `
+			DELETE FROM transactions 
+			WHERE id IN (SELECT tx_id FROM risk_scores WHERE is_simulated = TRUE)
+		`)
+		if err != nil {
+			log.Printf("[Desk] failed to clear simulated transactions from DB: %v", err)
+			return err
+		}
+		_, _ = d.db.ExecContext(ctx, `UPDATE users SET is_frozen = FALSE WHERE username LIKE 'bot\_%'`)
+	}
+
+	for id, c := range d.held {
+		if c.Simulated {
+			delete(d.held, id)
+		}
+	}
+
+	var newAlerts []*Case
+	for _, c := range d.alerts {
+		if !c.Simulated {
+			newAlerts = append(newAlerts, c)
+		}
+	}
+	d.alerts = newAlerts
+
+	var newOrder []uuid.UUID
+	for _, id := range d.order {
+		if c, ok := d.index[id]; ok {
+			if c.Simulated {
+				delete(d.index, id)
+			} else {
+				newOrder = append(newOrder, id)
+			}
+		}
+	}
+	d.order = newOrder
+
+	d.frozen = map[uuid.UUID]bool{}
+	d.loadFrozen()
+
+	d.stats.Scored = 0
+	d.stats.Unscored = 0
+	d.stats.ByBand = map[string]int{}
+	d.sumScore = 0.0
+	d.stats.AvgScore = 0.0
+	d.stats.Histogram = [10]int{}
+	d.stats.AlertsByMin = nil
+
+	for _, c := range d.alerts {
+		d.stats.Scored++
+		d.stats.ByBand[c.Band]++
+		d.sumScore += c.Score
+		bin := int(c.Score * 10)
+		if bin > 9 { bin = 9 }
+		if bin < 0 { bin = 0 }
+		d.stats.Histogram[bin]++
+	}
+	if d.stats.Scored > 0 {
+		d.stats.AvgScore = d.sumScore / float64(d.stats.Scored)
+	}
+	d.stats.HeldNow = len(d.held)
+
+	return nil
+}
+
 // Get returns a held or recently alerted case.
 func (d *Desk) Get(id uuid.UUID) *Case {
 	d.mu.RLock()

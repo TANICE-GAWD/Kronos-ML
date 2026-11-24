@@ -68,6 +68,13 @@ class OnlineScorer:
         self.sim_clock: float | None = None
         self.scored = 0
 
+    def reset(self):
+        with self.lock:
+            self.state = FeatureState(self.cfg)
+            self.profiles = None
+            self.sim_clock = None
+            self.scored = 0
+
     @staticmethod
     def _single_thread(det):
         """Per-call scoring of one row is faster without joblib thread pools."""
@@ -200,7 +207,7 @@ class OnlineScorer:
         return {"bots": n, "dormant": int(n_fresh), "history_transfers": int(len(ev["t"])),
                 "sim_start": datetime.fromtimestamp(start, timezone.utc).isoformat()}
 
-    def plan(self, scenario: str = "mixed_attack", n: int = 500, fraud_rate: float | None = None,
+    def plan(self, scenario: str = "mixed_attack", n: int = 100, fraud_rate: float | None = None,
              seed: int | None = None) -> dict:
         if self.profiles is None:
             raise RuntimeError("bots are not warmed up; call /warmup first")

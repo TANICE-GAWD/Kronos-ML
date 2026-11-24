@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -52,10 +53,13 @@ func SimSeedHandler(s *sim.Simulator) gin.HandlerFunc {
 	}
 }
 
-func SimStartHandler(s *sim.Simulator) gin.HandlerFunc {
+func SimStartHandler(s *sim.Simulator, desk *risk.Desk) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var req sim.StartRequest
 		_ = ctx.ShouldBindJSON(&req)
+		if err := desk.ClearSimulated(ctx.Request.Context()); err != nil {
+			log.Printf("[Sim] failed to clear simulated cases: %v", err)
+		}
 		if err := s.Start(req); err != nil {
 			ctx.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -73,4 +77,18 @@ func SimStopHandler(s *sim.Simulator) gin.HandlerFunc {
 
 func SimStatusHandler(s *sim.Simulator) gin.HandlerFunc {
 	return func(ctx *gin.Context) { ctx.JSON(http.StatusOK, s.Status()) }
+}
+
+func SimResetHandler(s *sim.Simulator, desk *risk.Desk) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		if err := desk.ClearSimulated(ctx.Request.Context()); err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "clear database: " + err.Error()})
+			return
+		}
+		s.Stop()
+		if err := s.ResetWarmed(ctx.Request.Context()); err != nil {
+			log.Printf("[Sim] failed to reset risk service: %v", err)
+		}
+		ctx.JSON(http.StatusOK, gin.H{"status": "ok", "message": "all simulated past runs data cleared entirely"})
+	}
 }

@@ -11,6 +11,7 @@ training and online scoring compute identical features.
 from __future__ import annotations
 
 import math
+import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 

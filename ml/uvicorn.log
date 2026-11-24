@@ -1,0 +1,5 @@
+INFO:     Started server process [69697]
+INFO:     Waiting for application startup.
+2026-11-24 16:18:07,661 INFO loaded model ensemble-20261122081923
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

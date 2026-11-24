@@ -1,6 +1,6 @@
 """Create the demo bots through the backend (logs in as the analyst).
 
-    python scripts/seed_demo.py [--api http://localhost:8080] [--n 100]
+    python scripts/seed_demo.py [--api http://localhost:8080] [--n 50]
 """
 import argparse
 import json
@@ -19,7 +19,7 @@ def call(url, body=None, token=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default="http://localhost:8080")
-    ap.add_argument("--n", type=int, default=100)
+    ap.add_argument("--n", type=int, default=50)
     ap.add_argument("--password", default="analyst")
     a = ap.parse_args()
     token = call(f"{a.api}/api/login", {"username": "analyst", "password": a.password})["token"]
