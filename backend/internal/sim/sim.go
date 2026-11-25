@@ -521,43 +521,43 @@ var bollywoodNames = []string{
 }
 
 func getBotName(i int) string {
-	category := i % 10
+	idx := i - 1
 	var baseName string
-	var listLen int
-	var suffix string
+	cycle := idx / 10
+	category := idx % 10
 
 	switch category {
 	case 0, 1, 2: // 30% Indian
-		listLen = len(indianNames)
-		baseName = indianNames[(i/10)%listLen]
-		if i/10 >= listLen {
-			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		nameIdx := cycle*3 + category
+		baseName = indianNames[nameIdx%len(indianNames)]
+		if nameIdx >= len(indianNames) {
+			baseName = fmt.Sprintf("%s%d", baseName, nameIdx/len(indianNames)+1)
 		}
 	case 3, 4, 5: // 30% English
-		listLen = len(englishNames)
-		baseName = englishNames[(i/10)%listLen]
-		if i/10 >= listLen {
-			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		nameIdx := cycle*3 + (category - 3)
+		baseName = englishNames[nameIdx%len(englishNames)]
+		if nameIdx >= len(englishNames) {
+			baseName = fmt.Sprintf("%s%d", baseName, nameIdx/len(englishNames)+1)
 		}
 	case 6, 7: // 20% Hollywood
-		listLen = len(hollywoodNames)
-		baseName = hollywoodNames[(i/10)%listLen]
-		if i/10 >= listLen {
-			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		nameIdx := cycle*2 + (category - 6)
+		baseName = hollywoodNames[nameIdx%len(hollywoodNames)]
+		if nameIdx >= len(hollywoodNames) {
+			baseName = fmt.Sprintf("%s%d", baseName, nameIdx/len(hollywoodNames)+1)
 		}
 	case 8: // 10% Anime
-		listLen = len(animeNames)
-		baseName = animeNames[(i/10)%listLen]
-		if i/10 >= listLen {
-			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		nameIdx := cycle
+		baseName = animeNames[nameIdx%len(animeNames)]
+		if nameIdx >= len(animeNames) {
+			baseName = fmt.Sprintf("%s%d", baseName, nameIdx/len(animeNames)+1)
 		}
 	case 9: // 10% Bollywood
-		listLen = len(bollywoodNames)
-		baseName = bollywoodNames[(i/10)%listLen]
-		if i/10 >= listLen {
-			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		nameIdx := cycle
+		baseName = bollywoodNames[nameIdx%len(bollywoodNames)]
+		if nameIdx >= len(bollywoodNames) {
+			baseName = fmt.Sprintf("%s%d", baseName, nameIdx/len(bollywoodNames)+1)
 		}
 	}
 
-	return baseName + suffix
+	return baseName
 }
