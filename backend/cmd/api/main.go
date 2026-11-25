@@ -56,6 +56,11 @@ func main() {
 	transactionRepository := repository.NewTransactionRepository(db)
 	log.Println("✓ Repositories initialized")
 
+	// Automatically initialize schema tables, procedures and views if database is empty
+	if err := kdb.InitializeSchema(context.Background(), db); err != nil {
+		log.Fatalf("Failed to initialize database schema: %v", err)
+	}
+
 	if err := repository.SeedCurrencies(context.Background(), db); err != nil {
 		log.Fatalf("Failed to seed currencies: %v", err)
 	}
