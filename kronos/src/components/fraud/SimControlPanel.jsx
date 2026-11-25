@@ -36,7 +36,7 @@ export default function SimControlPanel({ sim, compact = false }) {
   return (
     <div className={`sim-panel ${compact ? 'compact' : ''}`}>
       <div className="panel-title">
-        Simulation <span className="muted">{s.bots || 0} bots</span>
+        Simulation <span className="muted">{s.bots || 0} accounts</span>
         <span className={`sim-state st-${s.state}`}>{s.state}</span>
       </div>
       <div className="sim-controls">
@@ -74,7 +74,7 @@ export default function SimControlPanel({ sim, compact = false }) {
         )}
         {(s.bots || 0) < 20 ? (
           <button className="btn" onClick={() => call(() => fraudApi.simSeed(100))} disabled={busy}>
-            Create 100 bots
+            Sync 100 accounts
           </button>
         ) : busy ? (
           <button className="btn block" onClick={() => call(fraudApi.simStop)}>

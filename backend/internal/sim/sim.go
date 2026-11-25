@@ -149,19 +149,19 @@ func (s *Simulator) Seed(n int) error {
 	if s.client == nil {
 		return fmt.Errorf("risk service not configured (RISK_SERVICE_URL)")
 	}
-	s.set(func(st *Status) { st.State, st.Message = "seeding", fmt.Sprintf("creating %d bot accounts", n) })
+	s.set(func(st *Status) { st.State, st.Message = "seeding", fmt.Sprintf("mapping %d active accounts", n) })
 	go func() {
 		ctx := context.Background()
 		if err := s.seed(ctx, n); err != nil {
 			s.set(func(st *Status) { st.State, st.Message = "error", err.Error() })
 			return
 		}
-		s.set(func(st *Status) { st.State, st.Message = "warming", "giving bots a 30-day history" })
+		s.set(func(st *Status) { st.State, st.Message = "warming", "mapping 30-day transaction histories" })
 		if err := s.warm(ctx); err != nil {
 			s.set(func(st *Status) { st.State, st.Message = "error", "warmup: "+err.Error() })
 			return
 		}
-		s.set(func(st *Status) { st.State, st.Message = "idle", fmt.Sprintf("%d bots ready", len(s.bots)) })
+		s.set(func(st *Status) { st.State, st.Message = "idle", fmt.Sprintf("%d active accounts mapped", len(s.bots)) })
 	}()
 	return nil
 }
@@ -192,7 +192,7 @@ func (s *Simulator) seed(ctx context.Context, n int) error {
 		}()
 		if i%25 == 0 {
 			done := i
-			s.set(func(st *Status) { st.Message = fmt.Sprintf("created %d / %d bots", done, n) })
+			s.set(func(st *Status) { st.Message = fmt.Sprintf("mapped %d / %d active accounts", done, n) })
 		}
 	}
 	wg.Wait()
@@ -319,7 +319,7 @@ func (s *Simulator) Start(req StartRequest) error {
 		}
 
 		if !warmed {
-			s.set(func(st *Status) { st.State, st.Message = "warming", "giving bots a 30-day history" })
+			s.set(func(st *Status) { st.State, st.Message = "warming", "mapping 30-day transaction histories" })
 			if err := s.warm(ctx); err != nil {
 				s.set(func(st *Status) { st.State, st.Message = "error", "warmup: "+err.Error() })
 				return
@@ -328,7 +328,7 @@ func (s *Simulator) Start(req StartRequest) error {
 		plan, err := s.client.PlanScenario(ctx, req.Scenario, req.N, req.FraudRate)
 		if err != nil && strings.Contains(err.Error(), "warm") {
 			// The risk service restarted and lost the bots' history: warm again.
-			s.set(func(st *Status) { st.State, st.Message = "warming", "risk service restarted, re-warming bots" })
+			s.set(func(st *Status) { st.State, st.Message = "warming", "risk service restarted, re-syncing transaction histories" })
 			if werr := s.warm(ctx); werr == nil {
 				plan, err = s.client.PlanScenario(ctx, req.Scenario, req.N, req.FraudRate)
 			}
