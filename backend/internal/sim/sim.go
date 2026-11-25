@@ -172,7 +172,7 @@ func (s *Simulator) seed(ctx context.Context, n int) error {
 	var mu sync.Mutex
 	var firstErr error
 	for i := 1; i <= n; i++ {
-		name := fmt.Sprintf("%s%03d", BotPrefix, i)
+		name := getBotName(i)
 		planet := botPlanets[i%len(botPlanets)]
 		wg.Add(1)
 		sem <- struct{}{}
@@ -204,7 +204,7 @@ func (s *Simulator) seed(ctx context.Context, n int) error {
 		// transfers), so a smaller demo really is smaller.
 		res, err := s.db.ExecContext(ctx, `
 			DELETE FROM users WHERE username LIKE 'bot\_%'
-			AND substring(username from 5) ~ '^[0-9]+$' AND substring(username from 5)::int > $1`, n)
+			AND substring(username from 5 for 3) ~ '^[0-9]+$' AND substring(username from 5 for 3)::int > $1`, n)
 		if err != nil {
 			return fmt.Errorf("remove extra bots: %w", err)
 		}
@@ -436,4 +436,54 @@ func (s *Simulator) execute(ctx context.Context, it risk.PlanItem) {
 			st.FalseAlarms++
 		}
 	})
+}
+
+var indianNames = []string{
+	"rahul", "priya", "amit", "neha", "rohit", "ananya", "vikram", "deepika", "sanjay", "pooja",
+	"arjun", "shruti", "karan", "isha", "rishi", "sneha", "kabir", "aditi", "vijay", "meera",
+	"ajay", "tanvi", "manish", "divya", "raj", "swati", "vivek", "riya", "anil", "komal",
+	"abhishek", "kajal", "varun", "kavya", "rohan", "nisha", "suresh", "aarti", "sameer", "nehal",
+}
+
+var englishNames = []string{
+	"john", "emily", "michael", "sarah", "david", "jessica", "james", "ashley", "robert", "amanda",
+	"william", "brittany", "joseph", "megan", "charles", "stephanie", "thomas", "elizabeth", "christopher", "heather",
+	"daniel", "nicole", "matthew", "melissa", "donald", "amber", "mark", "rachel", "paul", "danielle",
+	"steven", "samantha", "andrew", "tiffany", "kevin", "kayla", "brian", "courtney", "george", "justin",
+}
+
+var hollywoodNames = []string{
+	"jacksparrow", "tonystark", "lukeskywalker", "harrypotter", "neo_matrix", "joker", "brucewayne", "peterparker", "indiana_jones", "terminator",
+	"forrest_gump", "marty_mcfly", "dominic_toretto", "john_wick", "walter_white", "tyler_durden", "han_solo", "darth_vader", "katniss_everdeen", "sherlock_holmes",
+	"james_bond", "optimus_prime", "bilbo_baggins", "gandalf", "captain_america", "thor", "wolverine", "lara_croft", "robocop", "maximus",
+}
+
+var animeNames = []string{
+	"goku", "naruto", "luffy", "sasuke", "light_yagami", "ichigo", "deku", "tanjiro", "eren_yeager", "itachi",
+	"gojo_satoru", "killua", "zoro", "saitama", "kakashi", "edward_elric", "lelouch", "kaneki", "ryuk", "asta",
+	"levi", "midoriya", "nezuko", "mikasa", "vegeta", "hisoka", "madara", "gaara", "ash_ketchum", "yugi",
+}
+
+var bollywoodNames = []string{
+	"raj_ddlj", "kabir_singh", "baburao", "circuit", "gabbar_singh", "chulbul_pandey", "mogambo", "singham", "raees", "don_srk",
+	"krrish", "munnabhai", "pk_alien", "bajirao", "barfi", "rancho", "kancha_cheena", "shahenshah", "shakaal", "crime_master_gogo",
+	"rowdy_rathore", "sardar_khan", "faizal_khan", "bhallaladeva", "baahubali", "pushpa_raj", "rocky_bhai", "salaar", "devdas", "muthu",
+}
+
+func getBotName(i int) string {
+	category := i % 10
+	var name string
+	switch category {
+	case 0, 1, 2: // 30% Indian
+		name = indianNames[(i/10)%len(indianNames)]
+	case 3, 4, 5: // 30% English
+		name = englishNames[(i/10)%len(englishNames)]
+	case 6, 7: // 20% Hollywood
+		name = hollywoodNames[(i/10)%len(hollywoodNames)]
+	case 8: // 10% Anime
+		name = animeNames[(i/10)%len(animeNames)]
+	case 9: // 10% Bollywood
+		name = bollywoodNames[(i/10)%len(bollywoodNames)]
+	}
+	return fmt.Sprintf("bot_%03d_%s", i, name)
 }

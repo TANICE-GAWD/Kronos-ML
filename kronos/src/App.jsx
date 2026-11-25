@@ -212,10 +212,7 @@ function App() {
           path="/"
           element={
             <ProtectedRoute>
-              <>
-                <MainScene />
-                <Analytics />
-              </>
+              <MainScene />
             </ProtectedRoute>
           }
         />
@@ -229,6 +226,7 @@ function App() {
         />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
+      <Analytics />
     </Router>
   );
 }
