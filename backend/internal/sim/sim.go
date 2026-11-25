@@ -200,16 +200,30 @@ func (s *Simulator) seed(ctx context.Context, n int) error {
 		log.Printf("[Sim] some bots failed to register: %v", firstErr)
 	}
 	if s.db != nil {
-		// Seeding fewer bots than before removes the extras (and their demo
-		// transfers), so a smaller demo really is smaller.
-		res, err := s.db.ExecContext(ctx, `
-			DELETE FROM users WHERE username LIKE 'bot\_%'
-			AND substring(username from 5 for 3) ~ '^[0-9]+$' AND substring(username from 5 for 3)::int > $1`, n)
+		activeNames := make([]string, n)
+		for i := 1; i <= n; i++ {
+			activeNames[i-1] = getBotName(i)
+		}
+
+		query := `DELETE FROM users WHERE username != 'analyst'`
+		args := []interface{}{}
+		if len(activeNames) > 0 {
+			query += ` AND username NOT IN (`
+			for idx, name := range activeNames {
+				if idx > 0 {
+					query += ","
+				}
+				query += fmt.Sprintf("$%d", idx+1)
+				args = append(args, name)
+			}
+			query += `)`
+		}
+		res, err := s.db.ExecContext(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("remove extra bots: %w", err)
 		}
 		if k, _ := res.RowsAffected(); k > 0 {
-			log.Printf("[Sim] removed %d bots above bot_%03d", k, n)
+			log.Printf("[Sim] removed %d extra bots", k)
 			s.mu.Lock()
 			s.bots = map[string]uuid.UUID{}
 			s.warmed = false
@@ -217,10 +231,10 @@ func (s *Simulator) seed(ctx context.Context, n int) error {
 		}
 		if _, err := s.db.ExecContext(ctx, `
 			UPDATE wallets w SET available_balance = GREATEST(w.available_balance, $1)
-			FROM users u WHERE u.id = w.user_id AND u.username LIKE 'bot\_%'`, BotBalance); err != nil {
+			FROM users u WHERE u.id = w.user_id AND u.username != 'analyst'`, BotBalance); err != nil {
 			return fmt.Errorf("top up bot wallets: %w", err)
 		}
-		_, _ = s.db.ExecContext(ctx, `UPDATE users SET is_frozen = FALSE WHERE username LIKE 'bot\_%'`)
+		_, _ = s.db.ExecContext(ctx, `UPDATE users SET is_frozen = FALSE WHERE username != 'analyst'`)
 	}
 	return nil
 }
@@ -233,7 +247,7 @@ func (s *Simulator) loadBots(ctx context.Context) ([]risk.BotUser, error) {
 	var out []risk.BotUser
 	s.mu.Lock()
 	for _, u := range all {
-		if strings.HasPrefix(u.Username, BotPrefix) {
+		if u.Username != "analyst" {
 			s.bots[u.Username] = u.ID
 			out = append(out, risk.BotUser{ID: u.ID.String(), Username: u.Username, HomePlanet: strings.ToLower(u.HomePlanet)})
 		}
@@ -443,6 +457,17 @@ var indianNames = []string{
 	"arjun", "shruti", "karan", "isha", "rishi", "sneha", "kabir", "aditi", "vijay", "meera",
 	"ajay", "tanvi", "manish", "divya", "raj", "swati", "vivek", "riya", "anil", "komal",
 	"abhishek", "kajal", "varun", "kavya", "rohan", "nisha", "suresh", "aarti", "sameer", "nehal",
+	"akash", "shreya", "siddharth", "kiran", "alok", "harish", "pallavi", "yash", "tanu",
+	"nitin", "sapna", "pankaj", "reema", "sunil", "monika", "deepak", "kirti", "lalit", "shalini",
+	"tarun", "payal", "gaurav", "mamta", "rajesh", "richa", "manoj", "jyoti", "sandeep", "sheetal",
+	"preeti", "ashok", "anjali", "vinay", "rekha", "arvind", "savita", "poonam",
+	"dev", "sonal", "nakul", "ritika", "madhav", "anita", "raghav", "priyanka", "mayank", "rashmi",
+	"harshal", "shilpa", "nikhil", "sonam", "kartik", "kareena", "vaibhav", "katrina", "pranav", "alia",
+	"rishabh", "shraddha", "dhruv", "janhvi", "ayush", "sara", "ishaan", "anushka", "aditya", "kriti",
+	"chetan", "kiara", "tushar", "parineeti", "piyush", "sonakshi", "aman", "ileana", "aniket", "jacqueline",
+	"sourabh", "nargis", "abshay", "bipasa", "mallika", "uday", "ameesha", "hritik", "susmita",
+	"ranbir", "aishwarya", "saif", "karishma", "madhuri", "govinda", "juhi", "anil_kapoor", "raveena",
+	"sunny_deol", "karina", "bobby_deol", "twinkle", "suniel_shetty", "shilpa_shetty", "akshaye_khanna", "tabu", "manisha", "urmila",
 }
 
 var englishNames = []string{
@@ -450,40 +475,89 @@ var englishNames = []string{
 	"william", "brittany", "joseph", "megan", "charles", "stephanie", "thomas", "elizabeth", "christopher", "heather",
 	"daniel", "nicole", "matthew", "melissa", "donald", "amber", "mark", "rachel", "paul", "danielle",
 	"steven", "samantha", "andrew", "tiffany", "kevin", "kayla", "brian", "courtney", "george", "justin",
+	"richard", "edward", "laura", "ronald", "timothy", "karen", "jason", "nancy",
+	"jeffrey", "lisa", "ryan", "betty", "gary", "dorothy", "jacob", "sandra", "nicholas",
+	"eric", "kimberly", "stephen", "donna", "jonathan", "carol", "larry", "michelle",
+	"scott", "brandon", "helen", "frank", "benjamin", "deborah", "gregory",
+	"samuel", "rebecca", "raymond", "sharon", "patrick", "alexander", "cynthia", "jack", "kathleen",
+	"dennis", "amy", "jerry", "shirley", "tyler", "angela", "aaron", "henry", "anna",
+	"douglas", "brenda", "peter", "pamela", "jose", "walter", "emma", "kyle", "katherine",
+	"harold", "christine", "carl", "debra", "arthur", "gerald", "carolyn", "roger", "janet",
+	"keith", "maria", "jeremy", "lawrence", "frances", "terry", "joyce", "albert", "evelyn",
+	"sean", "joan", "christian", "kelly", "christina", "billy", "lauren", "bruce", "victoria",
+	"ralph", "judith", "roy", "cheryl", "eugene", "wayne", "alice", "louis", "ann",
 }
 
 var hollywoodNames = []string{
 	"jacksparrow", "tonystark", "lukeskywalker", "harrypotter", "neo_matrix", "joker", "brucewayne", "peterparker", "indiana_jones", "terminator",
 	"forrest_gump", "marty_mcfly", "dominic_toretto", "john_wick", "walter_white", "tyler_durden", "han_solo", "darth_vader", "katniss_everdeen", "sherlock_holmes",
 	"james_bond", "optimus_prime", "bilbo_baggins", "gandalf", "captain_america", "thor", "wolverine", "lara_croft", "robocop", "maximus",
+	"aragorn", "legolas", "frodo", "saruman", "gollum", "sauron", "elrond", "gimli", "ironman", "spiderman",
+	"hulk", "blackwidow", "hawkeye", "doctorstrange", "blackpanther", "antman", "starlord", "gamora", "groot", "rocket_raccoon",
+	"thanos", "loki", "deadpool", "magneto", "prof_x", "cyclops", "storm", "jean_grey", "beast",
+	"mystique", "blade", "ghostrider", "morbius", "venom", "carnage", "sandman", "doc_ock", "green_goblin", "electro",
+	"daredevil", "punisher", "electra", "bullseye", "kingpin", "luke_cage", "iron_fist", "jessica_jones", "john_constantine", "rorschach",
+	"dr_manhattan", "nite_owl", "silk_spectre", "ozymandias", "comedian", "v_for_vendetta", "guy_fawkes", "pennywise", "freddy_krueger", "jason_voorhees",
+	"michael_myers", "leatherface", "chucky", "pinhead", "jigsaw", "xenomorph", "predator", "godzilla", "king_kong", "frankenstein",
 }
 
 var animeNames = []string{
 	"goku", "naruto", "luffy", "sasuke", "light_yagami", "ichigo", "deku", "tanjiro", "eren_yeager", "itachi",
 	"gojo_satoru", "killua", "zoro", "saitama", "kakashi", "edward_elric", "lelouch", "kaneki", "ryuk", "asta",
 	"levi", "midoriya", "nezuko", "mikasa", "vegeta", "hisoka", "madara", "gaara", "ash_ketchum", "yugi",
+	"gon", "kurapika", "leorio", "natsu", "lucy", "gray", "erza", "happy", "gajeel", "laxus",
+	"all_might", "bakugo", "todoroki", "uraraka", "iida", "shigaraki", "dabi", "toga", "all_for_one", "hawks",
+	"shinji", "asuka", "rei", "kaworu", "gendo", "misato", "ritsuko", "kaji", "mari", "penpen",
+	"zenitsu", "inosuke", "kanao", "genya", "muzan", "kokushibo", "douma", "akaza",
 }
 
 var bollywoodNames = []string{
 	"raj_ddlj", "kabir_singh", "baburao", "circuit", "gabbar_singh", "chulbul_pandey", "mogambo", "singham", "raees", "don_srk",
 	"krrish", "munnabhai", "pk_alien", "bajirao", "barfi", "rancho", "kancha_cheena", "shahenshah", "shakaal", "crime_master_gogo",
 	"rowdy_rathore", "sardar_khan", "faizal_khan", "bhallaladeva", "baahubali", "pushpa_raj", "rocky_bhai", "salaar", "devdas", "muthu",
+	"babu_bhaiya", "shyam_hera_pheri", "raju_hera_pheri", "anuradha_laxmi", "totla_tiwari", "kachra_seth", "khadak_singh", "nanji_bhai", "kabira", "ghanshyam",
+	"choocha", "hunny", "lali", "zafar", "bholi_punjaban", "pandit_ji", "mcafee", "sher_singh", "chatur_silencer", "millimetre",
+	"virus_sahasrabuddhe", "farhan", "raju_rastogi", "joy_lobo", "suhas_tandon", "rancho_original", "shambhu", "mishra_ji", "dubey_ji", "sharma_ji",
 }
 
 func getBotName(i int) string {
 	category := i % 10
-	var name string
+	var baseName string
+	var listLen int
+	var suffix string
+
 	switch category {
 	case 0, 1, 2: // 30% Indian
-		name = indianNames[(i/10)%len(indianNames)]
+		listLen = len(indianNames)
+		baseName = indianNames[(i/10)%listLen]
+		if i/10 >= listLen {
+			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		}
 	case 3, 4, 5: // 30% English
-		name = englishNames[(i/10)%len(englishNames)]
+		listLen = len(englishNames)
+		baseName = englishNames[(i/10)%listLen]
+		if i/10 >= listLen {
+			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		}
 	case 6, 7: // 20% Hollywood
-		name = hollywoodNames[(i/10)%len(hollywoodNames)]
+		listLen = len(hollywoodNames)
+		baseName = hollywoodNames[(i/10)%listLen]
+		if i/10 >= listLen {
+			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		}
 	case 8: // 10% Anime
-		name = animeNames[(i/10)%len(animeNames)]
+		listLen = len(animeNames)
+		baseName = animeNames[(i/10)%listLen]
+		if i/10 >= listLen {
+			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		}
 	case 9: // 10% Bollywood
-		name = bollywoodNames[(i/10)%len(bollywoodNames)]
+		listLen = len(bollywoodNames)
+		baseName = bollywoodNames[(i/10)%listLen]
+		if i/10 >= listLen {
+			suffix = fmt.Sprintf("%d", (i/10)/listLen+1)
+		}
 	}
-	return fmt.Sprintf("bot_%03d_%s", i, name)
+
+	return baseName + suffix
 }
