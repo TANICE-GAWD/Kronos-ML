@@ -296,10 +296,10 @@ func (s *Simulator) Start(req StartRequest) error {
 		req.Scenario = "mixed_attack"
 	}
 	if req.N <= 0 {
-		req.N = 100
+		req.N = 50
 	}
 	if req.DurationS <= 0 {
-		req.DurationS = 120
+		req.DurationS = 180
 	}
 	if req.Workers <= 0 {
 		req.Workers = 4

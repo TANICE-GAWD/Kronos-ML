@@ -5,8 +5,8 @@ import { SCENARIOS, PATTERN_LABELS } from './riskFormat';
 // Launch hundreds of bot transfers at once, a few of them fraudulent.
 export default function SimControlPanel({ sim, compact = false }) {
   const [scenario, setScenario] = useState('mixed_attack');
-  const [n, setN] = useState(100);
-  const [duration, setDuration] = useState(120);
+  const [n, setN] = useState(50);
+  const [duration, setDuration] = useState(180);
   const [fraudPct, setFraudPct] = useState('');
   const [error, setError] = useState('');
   const s = sim || { state: 'idle', bots: 0 };
