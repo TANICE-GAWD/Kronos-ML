@@ -285,7 +285,7 @@ func (s *Simulator) Start(req StartRequest) error {
 		req.N = 100
 	}
 	if req.DurationS <= 0 {
-		req.DurationS = 60
+		req.DurationS = 120
 	}
 	if req.Workers <= 0 {
 		req.Workers = 4

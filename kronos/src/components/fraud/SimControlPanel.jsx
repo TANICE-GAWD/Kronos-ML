@@ -6,7 +6,7 @@ import { SCENARIOS, PATTERN_LABELS } from './riskFormat';
 export default function SimControlPanel({ sim, compact = false }) {
   const [scenario, setScenario] = useState('mixed_attack');
   const [n, setN] = useState(100);
-  const [duration, setDuration] = useState(60);
+  const [duration, setDuration] = useState(120);
   const [fraudPct, setFraudPct] = useState('');
   const [error, setError] = useState('');
   const s = sim || { state: 'idle', bots: 0 };

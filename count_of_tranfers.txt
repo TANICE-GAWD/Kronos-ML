@@ -37,3 +37,54 @@
       scenario: str = "mixed_attack"
       n: int = Field(100, ge=1, le=5000)
       fraud_rate: Optional[float] = Field(None, ge=0, le=0.5)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  How to change it to 120 seconds:
+
+  If you want to set the default duration to 120 seconds, you can change it in the exact same files we modified earlier:
+
+  1. Frontend (kronos/src/components/fraud/SimControlPanel.jsx):
+
+     Change the React state default from 60 to 120:
+
+     const [duration, setDuration] = useState(120);
+
+  2. Go Backend (backend/internal/sim/sim.go):
+
+     Change the fallback duration from 60 to 120:
+
+     if req.DurationS <= 0 {
+         req.DurationS = 120
+     }
