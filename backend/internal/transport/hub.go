@@ -5,10 +5,12 @@ import (
 	"backend/internal/repository"
 	"backend/internal/risk"
 	"context"
-	"github.com/google/uuid"
 	"log"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func planetCurrencyIDForHub(planetName string) string {
@@ -45,10 +47,17 @@ type Hub struct {
 	// Fraud Shield (optional): desk snapshot and simulation status.
 	desk      *risk.Desk
 	simStatus func() interface{}
-	// Rebuilt on a timer. Loading every account on each frame stalls the API.
-	snapUsers   map[uuid.UUID]map[string]interface{}
-	snapWallets map[string]interface{}
-	snapAt      time.Time
+	// Full account list, refreshed off the broadcast loop. Frames only carry
+	// the accounts a packet, transfer, or alert actually names.
+	dirMu sync.RWMutex
+	dir   accountDir
+}
+
+type accountDir struct {
+	users   map[uuid.UUID]map[string]interface{}
+	wallets map[string]interface{}
+	analyst uuid.UUID
+	loaded  bool
 }
 
 // Caps on what every frame carries. With hundreds of demo bots the full lists
@@ -79,6 +88,7 @@ func NewHub(walletRepo repository.WalletRepository, transactionRepo repository.T
 }
 
 func (h *Hub) Run() {
+	go h.refreshDirectory()
 	for {
 		select {
 		case client := <-h.register:
@@ -95,8 +105,8 @@ func (h *Hub) Run() {
 				select {
 				case client.send <- enrichedState:
 				default:
-					close(client.send)
-					delete(h.clients, client)
+					// Skip this frame. Disconnecting a client that is still
+					// writing the last one left the dashboard frozen until reload.
 				}
 			}
 		}
@@ -110,36 +120,49 @@ func (h *Hub) Broadcast(state packet.StateUpdate) {
 
 func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 	ctx := context.Background()
-
-	if h.snapUsers != nil && time.Since(h.snapAt) < 15*time.Second {
-		state.Users = h.snapUsers
-		state.Wallets = h.snapWallets
-		return h.attachActivity(ctx, state)
+	if state.Packets == nil {
+		state.Packets = map[uuid.UUID]packet.Packet{}
 	}
+	state = h.attachActivity(ctx, state)
+	state.Users, state.Wallets = h.frameAccounts(state)
+	return state
+}
 
-	userPlanetCurrency := make(map[string]string)
-	usersMap := make(map[uuid.UUID]map[string]interface{})
+func (h *Hub) refreshDirectory() {
+	h.reloadDirectory()
+	t := time.NewTicker(10 * time.Second)
+	defer t.Stop()
+	for range t.C {
+		h.reloadDirectory()
+	}
+}
 
+func (h *Hub) reloadDirectory() {
+	ctx := context.Background()
 	users, err := h.userRepo.GetAllUsers(ctx)
-	usersOK := err == nil
 	if err != nil {
 		log.Printf("[Hub] Error fetching users: %v", err)
-	} else {
-		for _, u := range users {
-			userPlanetCurrency[u.ID.String()] = planetCurrencyIDForHub(u.HomePlanet)
-			usersMap[u.ID] = map[string]interface{}{
-				"id":          u.ID.String(),
-				"username":    u.Username,
-				"home_planet": u.HomePlanet,
-				"created_at":  u.CreatedAt,
-				"updated_at":  u.UpdatedAt,
-			}
+		return
+	}
+	userPlanetCurrency := make(map[string]string, len(users))
+	usersMap := make(map[uuid.UUID]map[string]interface{}, len(users))
+	var analyst uuid.UUID
+	for _, u := range users {
+		userPlanetCurrency[u.ID.String()] = planetCurrencyIDForHub(u.HomePlanet)
+		usersMap[u.ID] = map[string]interface{}{
+			"id":          u.ID.String(),
+			"username":    u.Username,
+			"home_planet": u.HomePlanet,
+			"created_at":  u.CreatedAt,
+			"updated_at":  u.UpdatedAt,
 		}
-		state.Users = usersMap
+		if u.Username == "analyst" {
+			analyst = u.ID
+		}
 	}
 
-	wallets, err := h.walletRepo.GetAllWallets(ctx)
 	walletsMap := map[string]interface{}{}
+	wallets, err := h.walletRepo.GetAllWallets(ctx)
 	if err != nil {
 		log.Printf("[Hub] Error fetching wallets: %v", err)
 	} else {
@@ -148,7 +171,6 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 			currencyID string
 			updatedAt  time.Time
 		})
-
 		for _, w := range wallets {
 			userKey := w.UserID.String()
 			walletData := map[string]interface{}{
@@ -160,7 +182,6 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 				"created_at":        w.CreatedAt,
 				"updated_at":        w.UpdatedAt,
 			}
-
 			preferredCurrency := userPlanetCurrency[userKey]
 			current, exists := selectedWalletMeta[userKey]
 			if !exists {
@@ -174,20 +195,15 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 				}
 				continue
 			}
-
 			candidateCurrency := strings.ToUpper(strings.TrimSpace(w.CurrencyID))
 			currentPreferred := current.currencyID == preferredCurrency
 			candidatePreferred := candidateCurrency == preferredCurrency
-
 			chooseCandidate := false
 			if candidatePreferred && !currentPreferred {
 				chooseCandidate = true
-			} else if candidatePreferred == currentPreferred {
-				if w.UpdatedAt.After(current.updatedAt) {
-					chooseCandidate = true
-				}
+			} else if candidatePreferred == currentPreferred && w.UpdatedAt.After(current.updatedAt) {
+				chooseCandidate = true
 			}
-
 			if chooseCandidate {
 				selectedWalletByUser[userKey] = walletData
 				selectedWalletMeta[userKey] = struct {
@@ -199,18 +215,75 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 				}
 			}
 		}
-
 		for userKey, walletData := range selectedWalletByUser {
 			walletsMap[userKey] = walletData
 		}
-		state.Wallets = walletsMap
 	}
-	if usersOK {
-		h.snapUsers = usersMap
-		h.snapWallets = walletsMap
-		h.snapAt = time.Now()
+
+	h.dirMu.Lock()
+	h.dir = accountDir{users: usersMap, wallets: walletsMap, analyst: analyst, loaded: true}
+	h.dirMu.Unlock()
+}
+
+// frameAccounts keeps a frame small enough for the browser to keep up.
+// The full account directory was several megabytes per update, so the socket
+// filled and the desk stopped moving until a reload.
+func (h *Hub) frameAccounts(state packet.StateUpdate) (map[uuid.UUID]map[string]interface{}, map[string]interface{}) {
+	h.dirMu.RLock()
+	dir := h.dir
+	h.dirMu.RUnlock()
+
+	users := map[uuid.UUID]map[string]interface{}{}
+	wallets := map[string]interface{}{}
+	if !dir.loaded {
+		return users, wallets
 	}
-	return h.attachActivity(ctx, state)
+
+	ids := map[uuid.UUID]struct{}{}
+	if dir.analyst != uuid.Nil {
+		ids[dir.analyst] = struct{}{}
+	}
+	for _, p := range state.Packets {
+		ids[p.SenderID] = struct{}{}
+		ids[p.ReceiverID] = struct{}{}
+	}
+	for _, tx := range state.Transactions {
+		addAccountID(ids, tx["sender_id"])
+		addAccountID(ids, tx["receiver_id"])
+	}
+	for _, item := range append(state.Held, state.Alerts...) {
+		switch c := item.(type) {
+		case risk.Case:
+			ids[c.SenderID] = struct{}{}
+			ids[c.ReceiverID] = struct{}{}
+		case *risk.Case:
+			if c != nil {
+				ids[c.SenderID] = struct{}{}
+				ids[c.ReceiverID] = struct{}{}
+			}
+		}
+	}
+	for id := range ids {
+		if u, ok := dir.users[id]; ok {
+			users[id] = u
+		}
+		if w, ok := dir.wallets[id.String()]; ok {
+			wallets[id.String()] = w
+		}
+	}
+	return users, wallets
+}
+
+func addAccountID(ids map[uuid.UUID]struct{}, v interface{}) {
+	s, ok := v.(string)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return
+	}
+	ids[id] = struct{}{}
 }
 
 func (h *Hub) attachActivity(ctx context.Context, state packet.StateUpdate) packet.StateUpdate {
