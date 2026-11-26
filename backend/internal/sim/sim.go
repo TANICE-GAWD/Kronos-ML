@@ -200,35 +200,6 @@ func (s *Simulator) seed(ctx context.Context, n int) error {
 		log.Printf("[Sim] some bots failed to register: %v", firstErr)
 	}
 	if s.db != nil {
-		activeNames := make([]string, n)
-		for i := 1; i <= n; i++ {
-			activeNames[i-1] = getBotName(i)
-		}
-
-		query := `DELETE FROM users WHERE username != 'analyst'`
-		args := []interface{}{}
-		if len(activeNames) > 0 {
-			query += ` AND username NOT IN (`
-			for idx, name := range activeNames {
-				if idx > 0 {
-					query += ","
-				}
-				query += fmt.Sprintf("$%d", idx+1)
-				args = append(args, name)
-			}
-			query += `)`
-		}
-		res, err := s.db.ExecContext(ctx, query, args...)
-		if err != nil {
-			return fmt.Errorf("remove extra bots: %w", err)
-		}
-		if k, _ := res.RowsAffected(); k > 0 {
-			log.Printf("[Sim] removed %d extra bots", k)
-			s.mu.Lock()
-			s.bots = map[string]uuid.UUID{}
-			s.warmed = false
-			s.mu.Unlock()
-		}
 		if _, err := s.db.ExecContext(ctx, `
 			UPDATE wallets w SET available_balance = GREATEST(w.available_balance, $1)
 			FROM users u WHERE u.id = w.user_id AND u.username != 'analyst'`, BotBalance); err != nil {
@@ -328,7 +299,9 @@ func (s *Simulator) Start(req StartRequest) error {
 		plan, err := s.client.PlanScenario(ctx, req.Scenario, req.N, req.FraudRate)
 		if err != nil && strings.Contains(err.Error(), "warm") {
 			// The risk service restarted and lost the bots' history: warm again.
-			s.set(func(st *Status) { st.State, st.Message = "warming", "risk service restarted, re-syncing transaction histories" })
+			s.set(func(st *Status) {
+				st.State, st.Message = "warming", "risk service restarted, re-syncing transaction histories"
+			})
 			if werr := s.warm(ctx); werr == nil {
 				plan, err = s.client.PlanScenario(ctx, req.Scenario, req.N, req.FraudRate)
 			}

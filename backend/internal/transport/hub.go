@@ -1,10 +1,10 @@
 package transport
 
-import(
-	"context"
+import (
 	"backend/internal/models/packet"
 	"backend/internal/repository"
 	"backend/internal/risk"
+	"context"
 	"github.com/google/uuid"
 	"log"
 	"strings"
@@ -12,7 +12,7 @@ import(
 )
 
 func planetCurrencyIDForHub(planetName string) string {
-	
+
 	planetToCurrency := map[string]string{
 		"earth":         "EARTH",
 		"mars":          "MARS",
@@ -31,21 +31,24 @@ func planetCurrencyIDForHub(planetName string) string {
 		return currencyID
 	}
 
-	
 	return strings.ToUpper(planetName)
 }
 
-type Hub struct{
-	register chan *Client
-	unregister chan *Client
-	clients map[*Client]bool
-	broadcast chan packet.StateUpdate
-	walletRepo repository.WalletRepository
+type Hub struct {
+	register        chan *Client
+	unregister      chan *Client
+	clients         map[*Client]bool
+	broadcast       chan packet.StateUpdate
+	walletRepo      repository.WalletRepository
 	transactionRepo repository.TransactionRepository
-	userRepo repository.UserRepository
+	userRepo        repository.UserRepository
 	// Fraud Shield (optional): desk snapshot and simulation status.
 	desk      *risk.Desk
 	simStatus func() interface{}
+	// Rebuilt on a timer. Loading every account on each frame stalls the API.
+	snapUsers   map[uuid.UUID]map[string]interface{}
+	snapWallets map[string]interface{}
+	snapAt      time.Time
 }
 
 // Caps on what every frame carries. With hundreds of demo bots the full lists
@@ -63,33 +66,31 @@ func (h *Hub) SetFraud(desk *risk.Desk, simStatus func() interface{}) {
 	h.simStatus = simStatus
 }
 
-func NewHub(walletRepo repository.WalletRepository, transactionRepo repository.TransactionRepository, userRepo repository.UserRepository) *Hub{
+func NewHub(walletRepo repository.WalletRepository, transactionRepo repository.TransactionRepository, userRepo repository.UserRepository) *Hub {
 	return &Hub{
-		clients: make(map[*Client]bool),
-		register: make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast: make(chan packet.StateUpdate),
-		walletRepo: walletRepo,
+		clients:         make(map[*Client]bool),
+		register:        make(chan *Client),
+		unregister:      make(chan *Client),
+		broadcast:       make(chan packet.StateUpdate),
+		walletRepo:      walletRepo,
 		transactionRepo: transactionRepo,
-		userRepo: userRepo,
+		userRepo:        userRepo,
 	}
 }
 
-
-
-func (h *Hub) Run(){
-	for{
-		select{
-		case client := <- h.register:
-			h.clients[client] = true;
+func (h *Hub) Run() {
+	for {
+		select {
+		case client := <-h.register:
+			h.clients[client] = true
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 			}
 		case stateSnapshot := <-h.broadcast:
-			
+
 			enrichedState := h.EnrichState(stateSnapshot)
-			
+
 			for client := range h.clients {
 				select {
 				case client.send <- enrichedState:
@@ -107,15 +108,20 @@ func (h *Hub) Broadcast(state packet.StateUpdate) {
 	h.broadcast <- state
 }
 
-
 func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 	ctx := context.Background()
+
+	if h.snapUsers != nil && time.Since(h.snapAt) < 15*time.Second {
+		state.Users = h.snapUsers
+		state.Wallets = h.snapWallets
+		return h.attachActivity(ctx, state)
+	}
 
 	userPlanetCurrency := make(map[string]string)
 	usersMap := make(map[uuid.UUID]map[string]interface{})
 
-	
 	users, err := h.userRepo.GetAllUsers(ctx)
+	usersOK := err == nil
 	if err != nil {
 		log.Printf("[Hub] Error fetching users: %v", err)
 	} else {
@@ -131,9 +137,9 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 		}
 		state.Users = usersMap
 	}
-	
-	
+
 	wallets, err := h.walletRepo.GetAllWallets(ctx)
+	walletsMap := map[string]interface{}{}
 	if err != nil {
 		log.Printf("[Hub] Error fetching wallets: %v", err)
 	} else {
@@ -143,7 +149,6 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 			updatedAt  time.Time
 		})
 
-		walletsMap := make(map[string]interface{})
 		for _, w := range wallets {
 			userKey := w.UserID.String()
 			walletData := map[string]interface{}{
@@ -200,8 +205,15 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 		}
 		state.Wallets = walletsMap
 	}
-	
-	
+	if usersOK {
+		h.snapUsers = usersMap
+		h.snapWallets = walletsMap
+		h.snapAt = time.Now()
+	}
+	return h.attachActivity(ctx, state)
+}
+
+func (h *Hub) attachActivity(ctx context.Context, state packet.StateUpdate) packet.StateUpdate {
 	transactions, err := h.transactionRepo.GetAllTransactions(ctx)
 	if err != nil {
 		log.Printf("[Hub] Error fetching transactions: %v", err)
@@ -212,15 +224,15 @@ func (h *Hub) EnrichState(state packet.StateUpdate) packet.StateUpdate {
 		}
 		for _, tx := range transactions {
 			txList = append(txList, map[string]interface{}{
-				"id":                  tx.ID.String(),
-				"sender_id":           tx.SenderID.String(),
-				"receiver_id":         tx.ReceiverID.String(),
-				"amount":              tx.Amount,
-				"status":              tx.Status,
-				"origin_planet":       tx.OriginPlanet,
+				"id":                 tx.ID.String(),
+				"sender_id":          tx.SenderID.String(),
+				"receiver_id":        tx.ReceiverID.String(),
+				"amount":             tx.Amount,
+				"status":             tx.Status,
+				"origin_planet":      tx.OriginPlanet,
 				"destination_planet": tx.DestinationPlanet,
-				"created_at":          tx.CreatedAt,
-				"updated_at":          tx.UpdatedAt,
+				"created_at":         tx.CreatedAt,
+				"updated_at":         tx.UpdatedAt,
 			})
 		}
 		state.Transactions = txList
